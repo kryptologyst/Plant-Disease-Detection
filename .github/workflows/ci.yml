@@ -1,0 +1,190 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black ruff pytest
+        pip install -r requirements.txt
+    
+    - name: Run black formatter
+      run: black --check src/ scripts/ demo/ tests/
+    
+    - name: Run ruff linter
+      run: ruff check src/ scripts/ demo/ tests/
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v --tb=short
+
+  quick-training-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run quick training test
+      run: |
+        python -c "
+        import sys
+        sys.path.append('.')
+        from src.utils import set_seed, get_device, create_directories
+        from src.data import create_data_loaders
+        from src.models import create_model
+        from omegaconf import DictConfig, OmegaConf
+        
+        # Create minimal config
+        config_dict = {
+            'data': {
+                'image_size': 64,
+                'batch_size': 8,
+                'num_workers': 2,
+                'train_split': 0.6,
+                'val_split': 0.2,
+                'test_split': 0.2,
+                'augmentations': {
+                    'horizontal_flip': 0.5,
+                    'rotation': 10,
+                    'brightness': 0.1,
+                    'contrast': 0.1,
+                    'saturation': 0.1
+                }
+            },
+            'model': {
+                'architecture': 'custom_cnn',
+                'num_classes': 2,
+                'pretrained': False,
+                'dropout': 0.3,
+                'learning_rate': 0.01,
+                'weight_decay': 1e-4
+            },
+            'training': {
+                'epochs': 2,
+                'early_stopping_patience': 1,
+                'save_best_only': True,
+                'monitor': 'val_accuracy',
+                'mode': 'max'
+            },
+            'paths': {
+                'data_dir': 'data',
+                'raw_data_dir': 'data/raw',
+                'processed_data_dir': 'data/processed',
+                'model_dir': 'models',
+                'output_dir': 'outputs',
+                'assets_dir': 'assets'
+            }
+        }
+        
+        config = OmegaConf.create(config_dict)
+        
+        # Setup
+        set_seed(42)
+        device = get_device()
+        create_directories(config)
+        
+        print(f'Using device: {device}')
+        
+        # Create data loaders
+        train_loader, val_loader, test_loader = create_data_loaders(config)
+        print(f'Data loaders created: train={len(train_loader)}, val={len(val_loader)}, test={len(test_loader)}')
+        
+        # Create model
+        model = create_model(config)
+        model = model.to(device)
+        print(f'Model created with {sum(p.numel() for p in model.parameters() if p.requires_grad):,} parameters')
+        
+        # Quick training test
+        import torch
+        import torch.nn as nn
+        from src.training import train_epoch, validate_epoch
+        
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=config.model.learning_rate)
+        
+        # Train for 1 epoch
+        train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
+        print(f'Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%')
+        
+        # Validate for 1 epoch
+        val_loss, val_acc = validate_epoch(model, val_loader, criterion, device)
+        print(f'Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%')
+        
+        print('Quick training test completed successfully!')
+        "
+
+  build-demo:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Test demo imports
+      run: |
+        python -c "
+        import streamlit as st
+        import torch
+        import torchvision
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from PIL import Image
+        print('All demo dependencies imported successfully!')
+        "
+    
+    - name: Test demo app syntax
+      run: |
+        python -m py_compile demo/app.py
+        echo "Demo app syntax check passed!"

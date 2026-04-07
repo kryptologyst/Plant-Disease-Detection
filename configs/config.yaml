@@ -1,0 +1,46 @@
+# Data Configuration
+data:
+  image_size: 224
+  batch_size: 32
+  num_workers: 4
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  augmentations:
+    horizontal_flip: 0.5
+    rotation: 15
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.2
+
+# Model Configuration
+model:
+  architecture: "resnet18"  # Options: resnet18, resnet50, efficientnet_b0, custom_cnn
+  num_classes: 2
+  pretrained: true
+  dropout: 0.5
+  learning_rate: 0.001
+  weight_decay: 1e-4
+
+# Training Configuration
+training:
+  epochs: 50
+  early_stopping_patience: 10
+  save_best_only: true
+  monitor: "val_accuracy"
+  mode: "max"
+
+# Evaluation Configuration
+evaluation:
+  metrics: ["accuracy", "precision", "recall", "f1", "auc", "confusion_matrix"]
+  save_predictions: true
+  save_plots: true
+
+# Paths
+paths:
+  data_dir: "data"
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  model_dir: "models"
+  output_dir: "outputs"
+  assets_dir: "assets"
